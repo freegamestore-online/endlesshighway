@@ -18,26 +18,26 @@ export const PLAYER_RADIUS = 0.65;
 /** Half-size of an obstacle cube for collision */
 export const OBSTACLE_HALF = 0.72;
 
-/** Base game speed (world units/sec) */
-export const BASE_SPEED = 16;
+/** Base game speed (world units/sec) — bumped up for more excitement */
+export const BASE_SPEED = 24;
 
 /** How much speed increases per second of play */
-export const SPEED_RAMP = 0.35;
+export const SPEED_RAMP = 0.55;
 
 /** Max game speed cap */
-export const MAX_SPEED = 52;
+export const MAX_SPEED = 70;
 
 /** Score per 5 units of distance */
 export const SCORE_PER_UNIT = 10;
 
 /** Minimum gap between obstacle spawns (seconds) */
-export const MIN_SPAWN_INTERVAL = 0.3;
+export const MIN_SPAWN_INTERVAL = 0.28;
 
 /** Starting spawn interval (seconds) */
-export const BASE_SPAWN_INTERVAL = 1.2;
+export const BASE_SPAWN_INTERVAL = 1.1;
 
 /** How fast spawn interval decreases per second */
-export const SPAWN_RAMP = 0.007;
+export const SPAWN_RAMP = 0.008;
 
 export function currentSpeed(elapsed: number): number {
   return Math.min(BASE_SPEED + elapsed * SPEED_RAMP, MAX_SPEED);
