@@ -15,7 +15,18 @@ export interface Coin {
   id: number;
   lane: Lane;
   z: number;
-  /** height above ground — coins can float at different heights */
+  /** height above ground */
   y: number;
   collected: boolean;
+}
+
+/** A gap in the road — player must jump over it */
+export interface Gap {
+  id: number;
+  /** which lanes are missing — 1 lane = easy, 2 lanes = hard, 3 = full gap */
+  lanes: Lane[];
+  /** Z of the leading edge of the gap */
+  z: number;
+  /** length of the gap in world units */
+  length: number;
 }

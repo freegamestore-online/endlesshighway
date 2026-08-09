@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import type { Lane, Obstacle, Coin } from "../types";
+import type { Lane, Obstacle, Coin, Gap } from "../types";
 import {
   LANE_X,
   SPAWN_Z,
@@ -10,26 +10,33 @@ import {
   OBSTACLE_HALF,
   checkCollision,
   checkCoinCollect,
+  checkGapCollision,
   currentSpeed,
   currentSpawnInterval,
   currentCoinInterval,
+  currentGapInterval,
   spawnCount,
   randomLane,
   randomTwoLanes,
   randomCoinHeight,
+  randomGapLanes,
   scoreFromDistance,
+  displaySpeed,
   BASE_SPEED,
   MAX_SPEED,
   JUMP_VELOCITY,
   GRAVITY,
   CUBE_TOP,
   COIN_SCORE,
+  GAP_LENGTH,
+  GAP_START_AFTER,
 } from "../lib/logic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface GameProps {
   onScore: (score: number) => void;
   onGameOver: () => void;
+  onSpeed?: (speed: number) => void;
   laneRef: React.RefObject<Lane>;
   jumpRef: React.RefObject<() => void>;
 }
@@ -135,57 +142,89 @@ function Stars() {
   );
 }
 
+// ─── Gap mesh — a glowing void in the road ────────────────────────────────────
+function GapMesh({ gap }: { gap: Gap }) {
+  const t = useRef(0);
+  const light1Ref = useRef<THREE.PointLight>(null!);
+  const light2Ref = useRef<THREE.PointLight>(null!);
+
+  useFrame((_, dt) => {
+    t.current += dt;
+    const pulse = 1.2 + Math.sin(t.current * 4) * 0.4;
+    if (light1Ref.current) light1Ref.current.intensity = pulse;
+    if (light2Ref.current) light2Ref.current.intensity = pulse * 0.7;
+  });
+
+  // gap.z is the leading edge (far side), gap.z + GAP_LENGTH is the near edge
+  const centerZ = gap.z + GAP_LENGTH / 2;
+
+  return (
+    <group>
+      {/* Dark void panel — sits just below road level */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.15, centerZ]}>
+        <planeGeometry args={[ROAD_WIDTH, GAP_LENGTH]} />
+        <meshStandardMaterial color="#000000" />
+      </mesh>
+
+      {/* Glowing leading edge */}
+      <mesh position={[0, 0.04, gap.z]}>
+        <boxGeometry args={[ROAD_WIDTH + 0.3, 0.12, 0.18]} />
+        <meshStandardMaterial color="#00f5ff" emissive="#00f5ff" emissiveIntensity={4} transparent opacity={0.9} />
+      </mesh>
+      {/* Glowing trailing edge */}
+      <mesh position={[0, 0.04, gap.z + GAP_LENGTH]}>
+        <boxGeometry args={[ROAD_WIDTH + 0.3, 0.12, 0.18]} />
+        <meshStandardMaterial color="#00f5ff" emissive="#00f5ff" emissiveIntensity={4} transparent opacity={0.9} />
+      </mesh>
+
+      {/* Side glow strips */}
+      <mesh position={[-ROAD_WIDTH / 2, 0.04, centerZ]}>
+        <boxGeometry args={[0.18, 0.1, GAP_LENGTH]} />
+        <meshStandardMaterial color="#7c3aed" emissive="#7c3aed" emissiveIntensity={3} transparent opacity={0.8} />
+      </mesh>
+      <mesh position={[ROAD_WIDTH / 2, 0.04, centerZ]}>
+        <boxGeometry args={[0.18, 0.1, GAP_LENGTH]} />
+        <meshStandardMaterial color="#7c3aed" emissive="#7c3aed" emissiveIntensity={3} transparent opacity={0.8} />
+      </mesh>
+
+      {/* Abyss glow beneath */}
+      <pointLight ref={light1Ref} color="#00f5ff" intensity={1.5} distance={10} position={[0, -2, centerZ]} />
+      <pointLight ref={light2Ref} color="#7c3aed" intensity={1.0} distance={8} position={[0, -3, centerZ]} />
+
+      {/* Warning arrow markers above the gap */}
+      <mesh position={[0, 1.2, gap.z - 2]} rotation={[0, 0, 0]}>
+        <coneGeometry args={[0.35, 0.7, 3]} />
+        <meshStandardMaterial color="#facc15" emissive="#facc15" emissiveIntensity={3} transparent opacity={0.85} />
+      </mesh>
+    </group>
+  );
+}
+
 // ─── Coin mesh ────────────────────────────────────────────────────────────────
 function CoinMesh({ coin }: { coin: Coin }) {
   const groupRef = useRef<THREE.Group>(null!);
   const t = useRef(Math.random() * Math.PI * 2);
-
   useFrame((_, dt) => {
     t.current += dt;
     if (!groupRef.current) return;
-    // Spin on Y axis + gentle float bob
     groupRef.current.rotation.y += dt * 3.5;
     groupRef.current.position.y = coin.y + Math.sin(t.current * 2.5) * 0.12;
   });
-
   const x = LANE_X[coin.lane]!;
-
   return (
     <group ref={groupRef} position={[x, coin.y, coin.z]}>
-      {/* Main disc */}
       <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
         <cylinderGeometry args={[0.32, 0.32, 0.1, 24]} />
-        <meshStandardMaterial
-          color="#fbbf24"
-          emissive="#f59e0b"
-          emissiveIntensity={1.8}
-          metalness={0.9}
-          roughness={0.05}
-        />
+        <meshStandardMaterial color="#fbbf24" emissive="#f59e0b" emissiveIntensity={1.8} metalness={0.9} roughness={0.05} />
       </mesh>
-      {/* Inner star emboss */}
       <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
         <cylinderGeometry args={[0.16, 0.16, 0.02, 6]} />
-        <meshStandardMaterial
-          color="#ffffff"
-          emissive="#fde68a"
-          emissiveIntensity={2.5}
-          metalness={1}
-          roughness={0}
-        />
+        <meshStandardMaterial color="#ffffff" emissive="#fde68a" emissiveIntensity={2.5} metalness={1} roughness={0} />
       </mesh>
-      {/* Outer rim glow ring */}
       <mesh rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.36, 0.04, 8, 24]} />
-        <meshStandardMaterial
-          color="#fbbf24"
-          emissive="#fbbf24"
-          emissiveIntensity={3}
-          transparent
-          opacity={0.7}
-        />
+        <meshStandardMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={3} transparent opacity={0.7} />
       </mesh>
-      {/* Point light for coin glow */}
       <pointLight color="#f59e0b" intensity={1.4} distance={4} />
     </group>
   );
@@ -193,10 +232,7 @@ function CoinMesh({ coin }: { coin: Coin }) {
 
 // ─── Running + jumping character ──────────────────────────────────────────────
 function RunningPlayer({
-  laneRef,
-  speedRef,
-  jumpYRef,
-  isJumpingRef,
+  laneRef, speedRef, jumpYRef, isJumpingRef,
 }: {
   laneRef: React.RefObject<Lane>;
   speedRef: React.RefObject<number>;
@@ -416,7 +452,6 @@ function ObstacleMesh({ obstacle, speedRef }: { obstacle: Obstacle; speedRef: Re
   const ringRef = useRef<THREE.Mesh>(null!);
   const ring2Ref = useRef<THREE.Mesh>(null!);
   const t = useRef(Math.random() * Math.PI * 2);
-
   useFrame((_, dt) => {
     t.current += dt;
     const speed = speedRef.current ?? BASE_SPEED;
@@ -436,7 +471,6 @@ function ObstacleMesh({ obstacle, speedRef }: { obstacle: Obstacle; speedRef: Re
       ring2Ref.current.scale.setScalar(1 + Math.sin(t.current * 5 + 1.5) * 0.12);
     }
   });
-
   const x = LANE_X[obstacle.lane]!;
   return (
     <group position={[x, 0.9, obstacle.z]}>
@@ -457,7 +491,7 @@ function ObstacleMesh({ obstacle, speedRef }: { obstacle: Obstacle; speedRef: Re
   );
 }
 
-// ─── Camera with dynamic FOV ──────────────────────────────────────────────────
+// ─── Camera ───────────────────────────────────────────────────────────────────
 function FollowCamera({ laneRef, speedRef }: { laneRef: React.RefObject<Lane>; speedRef: React.RefObject<number> }) {
   const { camera } = useThree();
   const camX = useRef(0);
@@ -481,29 +515,30 @@ function FollowCamera({ laneRef, speedRef }: { laneRef: React.RefObject<Lane>; s
 }
 
 // ─── Main game scene ──────────────────────────────────────────────────────────
-function Scene({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
+function Scene({ laneRef, onScore, onGameOver, onSpeed, jumpRef }: GameProps) {
   const obstacles = useRef<Obstacle[]>([]);
   const coins = useRef<Coin[]>([]);
+  const gaps = useRef<Gap[]>([]);
   const nextId = useRef(0);
   const elapsed = useRef(0);
   const spawnTimer = useRef(0);
   const coinSpawnTimer = useRef(0);
+  const gapSpawnTimer = useRef(0);
   const distance = useRef(0);
   const lastScore = useRef(-1);
+  const lastSpeed = useRef(-1);
   const dead = useRef(false);
   const offsetRef = useRef(0);
   const speedRef = useRef(BASE_SPEED);
   const coinsCollected = useRef(0);
 
-  // Jump state
   const jumpY = useRef(0);
   const jumpVel = useRef(0);
   const isJumping = useRef(false);
 
   const [, forceRender] = useState(0);
-
-  const cbs = useRef({ onScore, onGameOver });
-  cbs.current = { onScore, onGameOver };
+  const cbs = useRef({ onScore, onGameOver, onSpeed });
+  cbs.current = { onScore, onGameOver, onSpeed };
 
   useEffect(() => {
     (jumpRef as React.MutableRefObject<() => void>).current = () => {
@@ -534,7 +569,14 @@ function Scene({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
       }
     }
 
-    // Score from distance + coins
+    // Report speed (0-100)
+    const spd = displaySpeed(elapsed.current);
+    if (spd !== lastSpeed.current) {
+      lastSpeed.current = spd;
+      cbs.current.onSpeed?.(spd);
+    }
+
+    // Score
     const distScore = scoreFromDistance(distance.current);
     const totalScore = distScore + coinsCollected.current * COIN_SCORE;
     if (totalScore !== lastScore.current) {
@@ -565,7 +607,6 @@ function Scene({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
     const coinInterval = currentCoinInterval(elapsed.current);
     if (coinSpawnTimer.current >= coinInterval) {
       coinSpawnTimer.current = 0;
-      // Spawn 1–3 coins in a row in the same lane
       const coinLane = randomLane();
       const coinY = randomCoinHeight();
       const clusterSize = Math.floor(Math.random() * 3) + 1;
@@ -581,11 +622,28 @@ function Scene({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
       forceRender((n) => n + 1);
     }
 
+    // Spawn gaps (only after GAP_START_AFTER seconds)
+    if (elapsed.current >= GAP_START_AFTER) {
+      gapSpawnTimer.current += dt;
+      const gapInterval = currentGapInterval(elapsed.current);
+      if (gapSpawnTimer.current >= gapInterval) {
+        gapSpawnTimer.current = 0;
+        const gapLanes = randomGapLanes(elapsed.current);
+        gaps.current.push({
+          id: nextId.current++,
+          lanes: gapLanes,
+          z: SPAWN_Z,
+          length: GAP_LENGTH,
+        });
+        forceRender((n) => n + 1);
+      }
+    }
+
     const playerLane = laneRef.current ?? 1;
-    const alive: Obstacle[] = [];
     let changed = false;
 
     // Move + collide obstacles
+    const aliveObs: Obstacle[] = [];
     for (const obs of obstacles.current) {
       obs.z += speed * dt;
       if (checkCollision(playerLane, obs.lane, obs.z, jumpY.current)) {
@@ -593,16 +651,10 @@ function Scene({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
         cbs.current.onGameOver();
         return;
       }
-      if (obs.z <= PLAYER_Z + 8) {
-        alive.push(obs);
-      } else {
-        changed = true;
-      }
+      if (obs.z <= PLAYER_Z + 8) aliveObs.push(obs);
+      else changed = true;
     }
-    if (changed) {
-      obstacles.current = alive;
-      changed = false;
-    }
+    obstacles.current = aliveObs;
 
     // Move + collect coins
     const aliveCo: Coin[] = [];
@@ -612,21 +664,32 @@ function Scene({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
         coin.collected = true;
         coinsCollected.current += 1;
         changed = true;
-        continue; // remove immediately
+        continue;
       }
-      if (coin.z <= PLAYER_Z + 8 && !coin.collected) {
-        aliveCo.push(coin);
-      } else if (coin.collected) {
-        changed = true; // already removed above via continue
-      } else {
-        changed = true; // passed player
-      }
+      if (coin.z <= PLAYER_Z + 8 && !coin.collected) aliveCo.push(coin);
+      else changed = true;
     }
     coins.current = aliveCo;
 
-    if (changed) {
-      forceRender((n) => n + 1);
+    // Move + collide gaps
+    const aliveGaps: Gap[] = [];
+    for (const gap of gaps.current) {
+      gap.z += speed * dt;
+      if (checkGapCollision(playerLane, gap.lanes, gap.z, gap.length, jumpY.current)) {
+        dead.current = true;
+        cbs.current.onGameOver();
+        return;
+      }
+      // Keep gap visible until it fully passes the player
+      if (gap.z + gap.length <= PLAYER_Z + 10) {
+        changed = true; // passed
+      } else {
+        aliveGaps.push(gap);
+      }
     }
+    gaps.current = aliveGaps;
+
+    if (changed) forceRender((n) => n + 1);
   });
 
   return (
@@ -649,13 +712,16 @@ function Scene({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
       {coins.current.map((coin) => (
         <CoinMesh key={coin.id} coin={coin} />
       ))}
+      {gaps.current.map((gap) => (
+        <GapMesh key={gap.id} gap={gap} />
+      ))}
       <FollowCamera laneRef={laneRef} speedRef={speedRef} />
     </>
   );
 }
 
 // ─── Canvas wrapper ───────────────────────────────────────────────────────────
-export function Game({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
+export function Game({ laneRef, onScore, onGameOver, onSpeed, jumpRef }: GameProps) {
   return (
     <Canvas
       shadows
@@ -663,8 +729,72 @@ export function Game({ laneRef, onScore, onGameOver, jumpRef }: GameProps) {
       style={{ width: "100%", height: "100%" }}
       gl={{ antialias: true }}
     >
-      <Scene laneRef={laneRef} onScore={onScore} onGameOver={onGameOver} jumpRef={jumpRef} />
+      <Scene laneRef={laneRef} onScore={onScore} onGameOver={onGameOver} onSpeed={onSpeed} jumpRef={jumpRef} />
     </Canvas>
+  );
+}
+
+// ─── Speed HUD ────────────────────────────────────────────────────────────────
+export function SpeedHUD({ speed }: { speed: number }) {
+  const pct = Math.min(speed, 100);
+  // Color shifts from cyan → yellow → red as speed climbs
+  const hue = Math.round(180 - pct * 1.8); // 180 (cyan) → 0 (red)
+  const barColor = `hsl(${hue}, 100%, 60%)`;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 14,
+        left: "50%",
+        transform: "translateX(-50%)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        pointerEvents: "none",
+        zIndex: 10,
+      }}
+    >
+      <div style={{ fontFamily: "Manrope, sans-serif", fontSize: 11, color: "#a78bfa", letterSpacing: 2, textTransform: "uppercase" }}>
+        Speed
+      </div>
+      {/* Bar */}
+      <div
+        style={{
+          width: 120,
+          height: 8,
+          borderRadius: 4,
+          background: "rgba(255,255,255,0.08)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            borderRadius: 4,
+            background: barColor,
+            boxShadow: `0 0 8px ${barColor}`,
+            transition: "width 0.3s ease, background 0.3s ease",
+          }}
+        />
+      </div>
+      {/* Number */}
+      <div
+        style={{
+          fontFamily: "Fraunces, serif",
+          fontSize: 18,
+          fontWeight: 700,
+          color: barColor,
+          textShadow: `0 0 12px ${barColor}`,
+          lineHeight: 1,
+          transition: "color 0.3s ease",
+        }}
+      >
+        {pct}
+      </div>
+    </div>
   );
 }
 
@@ -691,24 +821,17 @@ function DPadBtn({ label, onPress, color = "#00f5ff", disabled = false }: DPadBt
       onPointerLeave={() => setActive(false)}
       onPointerCancel={() => setActive(false)}
       style={{
-        width: 52,
-        height: 52,
-        borderRadius: 12,
+        width: 52, height: 52, borderRadius: 12,
         border: `2px solid ${active ? color : color + "40"}`,
         cursor: disabled ? "default" : "pointer",
-        fontSize: 22,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        fontSize: 22, display: "flex", alignItems: "center", justifyContent: "center",
         background: active ? `linear-gradient(135deg, ${color}28, ${color}10)` : `${color}08`,
         color: active ? color : color + "70",
         boxShadow: active
           ? `0 0 22px ${color}99, 0 0 8px ${color}44, inset 0 0 12px ${color}18`
           : `inset 0 1px 0 rgba(255,255,255,0.04)`,
         transition: "all 0.06s ease",
-        touchAction: "none",
-        userSelect: "none",
-        outline: "none",
+        touchAction: "none", userSelect: "none", outline: "none",
         opacity: disabled ? 0.4 : 1,
       }}
       aria-label={label}
@@ -718,8 +841,17 @@ function DPadBtn({ label, onPress, color = "#00f5ff", disabled = false }: DPadBt
   );
 }
 
-// ─── Action button ────────────────────────────────────────────────────────────
-function ActionBtn({ label, color, onPress, disabled }: { label: string; color: string; onPress?: () => void; disabled?: boolean }) {
+// ─── Action button ─────────────────────────────────────────────────────────────
+interface ActionBtnProps {
+  label: string;
+  sublabel?: string;
+  onPress: () => void;
+  color?: string;
+  size?: number;
+  disabled?: boolean;
+}
+
+function ActionBtn({ label, sublabel, onPress, color = "#c026d3", size = 52, disabled = false }: ActionBtnProps) {
   const [active, setActive] = useState(false);
   return (
     <button
@@ -728,178 +860,87 @@ function ActionBtn({ label, color, onPress, disabled }: { label: string; color: 
         e.preventDefault();
         if (disabled) return;
         setActive(true);
-        onPress?.();
+        onPress();
       }}
       onPointerUp={() => setActive(false)}
       onPointerLeave={() => setActive(false)}
       onPointerCancel={() => setActive(false)}
       style={{
-        width: 42,
-        height: 42,
-        borderRadius: "50%",
-        border: `2px solid ${active ? color : color + "40"}`,
+        width: size, height: size, borderRadius: "50%",
+        border: `2px solid ${active ? color : color + "50"}`,
         cursor: disabled ? "default" : "pointer",
-        fontSize: 13,
-        fontWeight: 800,
-        fontFamily: "Manrope, sans-serif",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: active ? `${color}28` : `${color}08`,
-        color: active ? color : color + "70",
-        boxShadow: active ? `0 0 20px ${color}99, 0 0 8px ${color}44` : "none",
+        fontSize: 20, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: active ? `radial-gradient(circle, ${color}30, ${color}10)` : `${color}0a`,
+        color: active ? color : color + "80",
+        boxShadow: active
+          ? `0 0 28px ${color}bb, 0 0 10px ${color}55, inset 0 0 16px ${color}20`
+          : `inset 0 1px 0 rgba(255,255,255,0.04)`,
         transition: "all 0.06s ease",
-        touchAction: "none",
-        userSelect: "none",
-        outline: "none",
-        letterSpacing: "0.05em",
-        opacity: disabled ? 0.4 : 1,
+        touchAction: "none", userSelect: "none", outline: "none",
+        opacity: disabled ? 0.4 : 1, gap: 1,
       }}
       aria-label={label}
     >
-      {label}
+      <span>{label}</span>
+      {sublabel && (
+        <span style={{ fontSize: 8, letterSpacing: 1, opacity: 0.7, fontFamily: "Manrope,sans-serif", textTransform: "uppercase" }}>
+          {sublabel}
+        </span>
+      )}
     </button>
   );
 }
 
-// ─── Console Frame ────────────────────────────────────────────────────────────
-export interface ConsoleFrameProps {
+// ─── Console frame ────────────────────────────────────────────────────────────
+interface ConsoleFrameProps {
   children: React.ReactNode;
   onLeft: () => void;
   onRight: () => void;
   onJump: () => void;
   score: number;
   highScore: number;
-  phase: "menu" | "playing" | "over";
+  phase: string;
+  speed: number;
 }
 
-export function ConsoleFrame({ children, onLeft, onRight, onJump, score, highScore, phase }: ConsoleFrameProps) {
-  const buttonsActive = phase === "playing";
-
+export function ConsoleFrame({ children, onLeft, onRight, onJump, phase, speed }: ConsoleFrameProps) {
+  const playing = phase === "playing";
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "100%",
-        height: "100%",
-        background: "radial-gradient(ellipse at 50% 25%, #0e0626 0%, #03010f 65%)",
-        fontFamily: "Manrope, sans-serif",
-        overflow: "hidden",
-        padding: "4px 0",
-      }}
-    >
+    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#03010f", position: "relative" }}>
+      {/* Game viewport */}
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        {children}
+        {/* Speed HUD — only while playing */}
+        {playing && <SpeedHUD speed={speed} />}
+      </div>
+
+      {/* Controls bar */}
       <div
         style={{
-          position: "relative",
+          flexShrink: 0,
           display: "flex",
-          flexDirection: "column",
           alignItems: "center",
-          background: "linear-gradient(170deg, #1d1a30 0%, #12102000 40%, #0c0a1a 70%, #080614 100%)",
-          borderRadius: 36,
-          padding: "10px 14px 16px",
-          boxShadow: [
-            "0 0 0 1.5px #4c1d9540",
-            "0 0 80px #7c3aed18",
-            "0 0 200px #7c3aed08",
-            "inset 0 1.5px 0 rgba(255,255,255,0.08)",
-            "inset 0 -3px 12px rgba(0,0,0,0.6)",
-            "0 24px 60px rgba(0,0,0,0.7)",
-          ].join(", "),
-          border: "1px solid #2d1b6930",
-          maxWidth: 520,
-          width: "calc(100% - 12px)",
+          justifyContent: "space-between",
+          padding: "10px 24px 12px",
+          background: "linear-gradient(180deg, #07051a 0%, #0d0525 100%)",
+          borderTop: "1px solid rgba(124,58,237,0.25)",
+          gap: 12,
         }}
       >
-        {/* Top strip */}
-        <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7, padding: "0 4px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#00f5ff", boxShadow: "0 0 8px #00f5ff" }} />
-            <span style={{ fontFamily: "Fraunces, serif", fontSize: 11, fontWeight: 800, color: "#a78bfa", letterSpacing: "0.22em", textTransform: "uppercase", textShadow: "0 0 14px #a78bfa55" }}>
-              NEON∞DRIVE
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 12, fontSize: 11, fontWeight: 600 }}>
-            <span style={{ color: "#334155" }}>
-              PTS <span style={{ color: "#00f5ff", fontWeight: 800, textShadow: "0 0 8px #00f5ff55" }}>{score}</span>
-            </span>
-            <span style={{ color: "#334155" }}>
-              BEST <span style={{ color: "#f59e0b", fontWeight: 800, textShadow: "0 0 8px #f59e0b44" }}>{highScore}</span>
-            </span>
-          </div>
+        {/* D-Pad */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <DPadBtn label="◀" onPress={onLeft} disabled={!playing} />
+          <DPadBtn label="▶" onPress={onRight} disabled={!playing} />
         </div>
 
-        {/* Screen bezel */}
-        <div
-          style={{
-            width: "100%",
-            borderRadius: 20,
-            background: "#000",
-            padding: "4px",
-            boxShadow: ["0 0 0 2px #120d2a", "0 0 0 3.5px #1e1040", "inset 0 0 40px #000000cc", "0 0 50px #7c3aed14"].join(", "),
-            border: "1px solid #0d0a1e",
-          }}
-        >
-          <div style={{ borderRadius: 16, overflow: "hidden", aspectRatio: "16/9", position: "relative", background: "#03010f", minHeight: 155 }}>
-            {/* Scanlines */}
-            <div style={{ position: "absolute", inset: 0, backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 4px)", pointerEvents: "none", zIndex: 5 }} />
-            {/* Top reflection */}
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "30%", background: "linear-gradient(180deg, rgba(255,255,255,0.025) 0%, transparent 100%)", pointerEvents: "none", zIndex: 6, borderRadius: "16px 16px 0 0" }} />
-            {children}
-          </div>
+        {/* Centre hint */}
+        <div style={{ textAlign: "center", fontFamily: "Manrope,sans-serif", fontSize: 10, color: "#4c1d95", letterSpacing: 1, textTransform: "uppercase", lineHeight: 1.4 }}>
+          {playing ? "jump over\ngaps & cubes" : "endless highway"}
         </div>
 
-        {/* Speaker grille */}
-        <div style={{ display: "flex", gap: 4, margin: "7px 0 5px", opacity: 0.3 }}>
-          {[...Array(7)].map((_, i) => (
-            <div key={i} style={{ width: 3, height: 3, borderRadius: "50%", background: "#7c3aed", boxShadow: "0 0 4px #7c3aed" }} />
-          ))}
-        </div>
-
-        {/* Controls row */}
-        <div style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", padding: "0 8px", gap: 8 }}>
-          {/* D-Pad */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-            {/* Up button for jump */}
-            <div style={{ marginBottom: 3 }}>
-              <DPadBtn label="▲" onPress={onJump} color="#f59e0b" disabled={!buttonsActive} />
-            </div>
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-              <DPadBtn label="◀" onPress={onLeft} color="#00f5ff" disabled={!buttonsActive} />
-              <div style={{ width: 22, height: 22, borderRadius: "50%", background: "radial-gradient(circle at 40% 35%, #2d1b69, #0d0a1e)", border: "1.5px solid #3b1f7a44", boxShadow: "inset 0 2px 4px rgba(0,0,0,0.6)" }} />
-              <DPadBtn label="▶" onPress={onRight} color="#00f5ff" disabled={!buttonsActive} />
-            </div>
-            <div style={{ fontSize: 9, color: "#2d3748", letterSpacing: "0.12em", marginTop: 4, fontWeight: 600 }}>MOVE</div>
-          </div>
-
-          {/* Center home button */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-            <div style={{ width: 38, height: 38, borderRadius: "50%", background: "radial-gradient(circle at 38% 32%, #4c1d95, #1a0a2e 70%)", border: "2px solid #6d28d944", boxShadow: "0 0 18px #7c3aed44, inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -2px 6px rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "#a78bfa", textShadow: "0 0 10px #a78bfa" }}>
-              ∞
-            </div>
-            <div style={{ fontSize: 8, color: "#1e1b4b", letterSpacing: "0.15em", fontWeight: 700 }}>HOME</div>
-          </div>
-
-          {/* Action buttons — A = jump */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "42px 42px", gridTemplateRows: "42px 42px", gap: 5 }}>
-              <ActionBtn label="Y" color="#f59e0b" disabled={!buttonsActive} />
-              <ActionBtn label="X" color="#00f5ff" disabled={!buttonsActive} />
-              <ActionBtn label="B" color="#f472b6" disabled={!buttonsActive} />
-              <ActionBtn label="A" color="#4ade80" onPress={onJump} disabled={!buttonsActive} />
-            </div>
-            <div style={{ fontSize: 9, color: "#2d3748", letterSpacing: "0.12em", marginTop: 4, fontWeight: 600 }}>ACTION</div>
-          </div>
-        </div>
-
-        {/* Bottom grip bumpers */}
-        <div style={{ display: "flex", gap: 4, marginTop: 10, opacity: 0.18, alignItems: "center" }}>
-          {[...Array(9)].map((_, i) => (
-            <div key={i} style={{ width: 18, height: 6, borderRadius: 3, background: "#4c1d95" }} />
-          ))}
-        </div>
+        {/* Jump button */}
+        <ActionBtn label="▲" sublabel="jump" onPress={onJump} color="#c026d3" size={56} disabled={!playing} />
       </div>
     </div>
   );
@@ -908,23 +949,37 @@ export function ConsoleFrame({ children, onLeft, onRight, onJump, score, highSco
 // ─── Menu overlay ─────────────────────────────────────────────────────────────
 export function MenuOverlay({ onStart }: { onStart: () => void }) {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 10, gap: 10 }}>
-      <div style={{ fontFamily: "Fraunces, serif", fontSize: 22, fontWeight: 900, color: "#00f5ff", textShadow: "0 0 30px #00f5ff, 0 0 60px #00f5ff44", letterSpacing: "0.08em" }}>
-        NEON∞DRIVE
-      </div>
-      <div style={{ fontSize: 9, color: "#6366f1", letterSpacing: "0.3em", fontWeight: 700, textTransform: "uppercase" }}>
-        Endless Highway
-      </div>
-      <div style={{ fontSize: 8, color: "#475569", marginTop: 4, textAlign: "center", lineHeight: 1.6, letterSpacing: "0.05em" }}>
-        ◀ ▶ to switch lanes · ▲ / A / SPACE to jump<br />
-        🪙 Collect coins for bonus points!
+    <div style={{
+      position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", gap: 28, zIndex: 20,
+      background: "radial-gradient(ellipse at 50% 40%, #0d0525cc 0%, #03010fee 100%)",
+    }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontFamily: "Fraunces, serif", fontSize: 38, fontWeight: 700, color: "#00f5ff", textShadow: "0 0 32px #00f5ff88", lineHeight: 1.1 }}>
+          Endless
+        </div>
+        <div style={{ fontFamily: "Fraunces, serif", fontSize: 38, fontWeight: 700, color: "#c026d3", textShadow: "0 0 32px #c026d388", lineHeight: 1.1 }}>
+          Highway
+        </div>
+        <div style={{ fontFamily: "Manrope, sans-serif", fontSize: 13, color: "#a78bfa", marginTop: 10, letterSpacing: 1 }}>
+          dodge cubes · jump gaps · collect coins
+        </div>
       </div>
       <button
         onClick={onStart}
-        style={{ marginTop: 8, padding: "8px 24px", borderRadius: 8, border: "1.5px solid #00f5ff44", background: "linear-gradient(135deg, #00f5ff18, #7c3aed18)", color: "#00f5ff", fontSize: 10, fontWeight: 800, letterSpacing: "0.2em", textTransform: "uppercase", cursor: "pointer", fontFamily: "Manrope, sans-serif", boxShadow: "0 0 20px #00f5ff22", outline: "none" }}
+        style={{
+          fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 700,
+          padding: "14px 44px", borderRadius: 14,
+          background: "linear-gradient(135deg, #7c3aed, #c026d3)",
+          color: "#fff", border: "none", cursor: "pointer",
+          boxShadow: "0 0 32px #c026d366", letterSpacing: 1,
+        }}
       >
-        START
+        Start
       </button>
+      <div style={{ fontFamily: "Manrope, sans-serif", fontSize: 11, color: "#4c1d95", textAlign: "center", lineHeight: 1.8 }}>
+        ← → to switch lanes &nbsp;·&nbsp; Space / ▲ to jump
+      </div>
     </div>
   );
 }
@@ -932,24 +987,29 @@ export function MenuOverlay({ onStart }: { onStart: () => void }) {
 // ─── Game over overlay ────────────────────────────────────────────────────────
 export function GameOverOverlay({ score, highScore, onRestart }: { score: number; highScore: number; onRestart: () => void }) {
   return (
-    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 10, gap: 8 }}>
-      <div style={{ fontFamily: "Fraunces, serif", fontSize: 16, fontWeight: 900, color: "#ff1a4d", textShadow: "0 0 20px #ff1a4d", letterSpacing: "0.1em" }}>
-        GAME OVER
+    <div style={{
+      position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", gap: 20, zIndex: 20,
+      background: "radial-gradient(ellipse at 50% 40%, #1a0a2ecc 0%, #03010fee 100%)",
+    }}>
+      <div style={{ fontFamily: "Fraunces, serif", fontSize: 32, fontWeight: 700, color: "#ff1a4d", textShadow: "0 0 24px #ff1a4d88" }}>
+        Game Over
       </div>
-      <div style={{ fontSize: 10, color: "#94a3b8", letterSpacing: "0.1em" }}>
-        SCORE <span style={{ color: "#00f5ff", fontWeight: 800 }}>{score}</span>
-      </div>
-      {score >= highScore && score > 0 && (
-        <div style={{ fontSize: 9, color: "#f59e0b", letterSpacing: "0.15em", fontWeight: 700 }}>★ NEW BEST!</div>
-      )}
-      <div style={{ fontSize: 9, color: "#475569", letterSpacing: "0.08em" }}>
-        BEST <span style={{ color: "#f59e0b", fontWeight: 700 }}>{highScore}</span>
+      <div style={{ textAlign: "center", fontFamily: "Manrope, sans-serif", fontSize: 15, color: "#a78bfa", lineHeight: 2 }}>
+        <div>Score <span style={{ color: "#00f5ff", fontWeight: 700 }}>{score}</span></div>
+        <div>Best &nbsp;<span style={{ color: "#fbbf24", fontWeight: 700 }}>{highScore}</span></div>
       </div>
       <button
         onClick={onRestart}
-        style={{ marginTop: 6, padding: "7px 20px", borderRadius: 8, border: "1.5px solid #00f5ff44", background: "linear-gradient(135deg, #00f5ff18, #7c3aed18)", color: "#00f5ff", fontSize: 9, fontWeight: 800, letterSpacing: "0.2em", textTransform: "uppercase", cursor: "pointer", fontFamily: "Manrope, sans-serif", outline: "none" }}
+        style={{
+          fontFamily: "Fraunces, serif", fontSize: 16, fontWeight: 700,
+          padding: "12px 40px", borderRadius: 12,
+          background: "linear-gradient(135deg, #7c3aed, #c026d3)",
+          color: "#fff", border: "none", cursor: "pointer",
+          boxShadow: "0 0 24px #c026d355",
+        }}
       >
-        RETRY
+        Try Again
       </button>
     </div>
   );
@@ -961,11 +1021,9 @@ export function useLaneControls(laneRef: React.RefObject<Lane>) {
     const cur = laneRef.current ?? 1;
     (laneRef as React.MutableRefObject<Lane>).current = Math.max(0, cur - 1) as Lane;
   }, [laneRef]);
-
   const moveRight = useCallback(() => {
     const cur = laneRef.current ?? 1;
     (laneRef as React.MutableRefObject<Lane>).current = Math.min(2, cur + 1) as Lane;
   }, [laneRef]);
-
   return { moveLeft, moveRight };
 }

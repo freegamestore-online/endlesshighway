@@ -13,17 +13,21 @@ import type { GamePhase, Lane } from "./types";
 export default function App() {
   const [phase, setPhase] = useState<GamePhase>("menu");
   const [score, setScore] = useState(0);
+  const [speed, setSpeed] = useState(0);
   const [round, setRound] = useState(0);
   const [highScore, setHighScore] = useHighScore("endlesshighway_highscore");
 
   const scoreRef = useRef(0);
   const laneRef = useRef<Lane>(1);
-  // jumpRef holds the jump trigger function exposed by the Scene
   const jumpRef = useRef<() => void>(() => {});
 
   const handleScore = useCallback((s: number) => {
     scoreRef.current = s;
     setScore(s);
+  }, []);
+
+  const handleSpeed = useCallback((s: number) => {
+    setSpeed(s);
   }, []);
 
   const handleGameOver = useCallback(() => {
@@ -35,6 +39,7 @@ export default function App() {
     scoreRef.current = 0;
     laneRef.current = 1;
     setScore(0);
+    setSpeed(0);
     setRound((r) => r + 1);
     setPhase("playing");
   }, []);
@@ -80,6 +85,7 @@ export default function App() {
           score={score}
           highScore={highScore}
           phase={phase}
+          speed={speed}
         >
           {phase === "playing" && (
             <Game
@@ -87,6 +93,7 @@ export default function App() {
               laneRef={laneRef}
               onScore={handleScore}
               onGameOver={handleGameOver}
+              onSpeed={handleSpeed}
               jumpRef={jumpRef}
             />
           )}
