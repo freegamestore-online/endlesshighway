@@ -14,6 +14,7 @@ export default function App() {
   const [phase, setPhase] = useState<GamePhase>("menu");
   const [score, setScore] = useState(0);
   const [speed, setSpeed] = useState(0);
+  const [coins, setCoins] = useState(0);
   const [round, setRound] = useState(0);
   const [highScore, setHighScore] = useHighScore("endlesshighway_highscore");
 
@@ -30,6 +31,10 @@ export default function App() {
     setSpeed(s);
   }, []);
 
+  const handleCoins = useCallback((c: number) => {
+    setCoins(c);
+  }, []);
+
   const handleGameOver = useCallback(() => {
     setHighScore(scoreRef.current);
     setPhase("over");
@@ -40,6 +45,7 @@ export default function App() {
     laneRef.current = 1;
     setScore(0);
     setSpeed(0);
+    setCoins(0);
     setRound((r) => r + 1);
     setPhase("playing");
   }, []);
@@ -86,6 +92,7 @@ export default function App() {
           highScore={highScore}
           phase={phase}
           speed={speed}
+          coins={coins}
         >
           {phase === "playing" && (
             <Game
@@ -94,6 +101,7 @@ export default function App() {
               onScore={handleScore}
               onGameOver={handleGameOver}
               onSpeed={handleSpeed}
+              onCoins={handleCoins}
               jumpRef={jumpRef}
             />
           )}
