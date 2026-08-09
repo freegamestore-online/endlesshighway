@@ -27,32 +27,32 @@ export const COIN_HEIGHTS: readonly number[] = [0.9, 2.2];
 /** Score bonus per coin collected */
 export const COIN_SCORE = 50;
 
-/** Base game speed — noticeably fast from the start */
-export const BASE_SPEED = 32;
+/** Base game speed — comfortable starting pace */
+export const BASE_SPEED = 16;
 
-/** Speed increase per second of play */
-export const SPEED_RAMP = 0.8;
+/** Speed increase per second of play — gentle ramp */
+export const SPEED_RAMP = 0.35;
 
 /** Hard cap on speed */
-export const MAX_SPEED = 90;
+export const MAX_SPEED = 55;
 
 /** Score per 5 units of distance */
 export const SCORE_PER_UNIT = 10;
 
 /** Tightest gap between spawns (seconds) */
-export const MIN_SPAWN_INTERVAL = 0.18;
+export const MIN_SPAWN_INTERVAL = 0.38;
 
-/** Starting spawn interval (seconds) — already aggressive */
-export const BASE_SPAWN_INTERVAL = 0.65;
+/** Starting spawn interval (seconds) — relaxed at the start */
+export const BASE_SPAWN_INTERVAL = 1.4;
 
 /** How fast spawn interval shrinks per second */
-export const SPAWN_RAMP = 0.012;
+export const SPAWN_RAMP = 0.008;
 
 /** After this many seconds, there's a chance a second block spawns simultaneously */
-export const DOUBLE_SPAWN_AFTER = 8;
+export const DOUBLE_SPAWN_AFTER = 20;
 
 /** Probability of a double-spawn once the threshold is passed (0–1) */
-export const DOUBLE_SPAWN_CHANCE = 0.45;
+export const DOUBLE_SPAWN_CHANCE = 0.3;
 
 /** Jump initial velocity (world units/sec) */
 export const JUMP_VELOCITY = 9.5;
