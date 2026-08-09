@@ -1,35 +1,45 @@
-import { useRef, useState } from "react";
-import { GameShell, GameTopbar, GameOverScreen } from "@freegamestore/games";
-import { Game } from "./components/Game";
+import { useRef, useState, useCallback } from "react";
+import { GameShell, GameTopbar } from "@freegamestore/games";
+import {
+  Game,
+  ConsoleFrame,
+  MenuOverlay,
+  GameOverOverlay,
+  useLaneControls,
+} from "./components/Game";
 import { useHighScore } from "./hooks/useHighScore";
-import { ROUND_SECONDS } from "./lib/logic";
-import type { GamePhase } from "./types";
+import type { GamePhase, Lane } from "./types";
 
 export default function App() {
   const [phase, setPhase] = useState<GamePhase>("menu");
   const [score, setScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS);
-  // Bumping `round` remounts <Game> so each play starts from a clean state.
   const [round, setRound] = useState(0);
-  const [highScore, setHighScore] = useHighScore("Endless Highway-highscore");
+  const [highScore, setHighScore] = useHighScore("endlesshighway_highscore");
 
-  // The final score is read from a ref at game-over so it isn't stale in the
-  // callback closure (score state updates asynchronously during play).
   const scoreRef = useRef(0);
-  const handleScore = (s: number) => { scoreRef.current = s; setScore(s); };
+  // Shared lane ref — App owns it, passes to both Game (3D scene) and ConsoleFrame (D-pad)
+  const laneRef = useRef<Lane>(1);
 
-  const start = () => {
-    scoreRef.current = 0;
-    setScore(0);
-    setTimeLeft(ROUND_SECONDS);
-    setRound((r) => r + 1);
-    setPhase("playing");
+  const handleScore = (s: number) => {
+    scoreRef.current = s;
+    setScore(s);
   };
 
-  const end = () => {
+  const handleGameOver = useCallback(() => {
     setHighScore(scoreRef.current);
     setPhase("over");
-  };
+  }, [setHighScore]);
+
+  const start = useCallback(() => {
+    scoreRef.current = 0;
+    laneRef.current = 1;
+    setScore(0);
+    setRound((r) => r + 1);
+    setPhase("playing");
+  }, []);
+
+  // Keyboard + D-pad controls — active whenever the component is mounted
+  const { moveLeft, moveRight } = useLaneControls(laneRef);
 
   return (
     <GameShell
@@ -38,38 +48,49 @@ export default function App() {
           title="Endless Highway"
           stats={[
             { label: "Score", value: score, accent: true },
-            { label: "Time", value: `${timeLeft}s` },
             { label: "Best", value: highScore },
           ]}
         />
       }
     >
-      <div className="relative w-full h-full min-h-[400px]">
-        {phase !== "menu" && (
-          <Game key={round} onScore={handleScore} onTime={setTimeLeft} onGameOver={end} />
-        )}
+      <div style={{ width: "100%", height: "100%", overflow: "hidden" }}>
+        <ConsoleFrame
+          onLeft={moveLeft}
+          onRight={moveRight}
+          score={score}
+          highScore={highScore}
+        >
+          {/* 3D game canvas */}
+          {phase === "playing" && (
+            <Game
+              key={round}
+              laneRef={laneRef}
+              onScore={handleScore}
+              onGameOver={handleGameOver}
+            />
+          )}
 
-        {phase === "menu" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center gap-5 px-6" style={{ background: "#0f172a" }}>
-            <h1 className="text-3xl font-bold" style={{ color: "#f8fafc" }}>Endless Highway</h1>
-            <p className="max-w-sm" style={{ color: "#94a3b8" }}>
-              Move with <b>WASD / arrow keys</b> (or the on-screen pad on mobile).
-              Grab as many orbs as you can before the clock runs out.
-            </p>
-            <button
-              onClick={start}
-              className="font-semibold rounded-xl"
-              style={{ minHeight: 48, padding: "0 2rem", background: "#22d3ee", color: "#083344", border: "none", cursor: "pointer", fontSize: "1.05rem" }}
-            >
-              Play
-            </button>
-            {highScore > 0 && <p className="text-sm" style={{ color: "#64748b" }}>Best: {highScore}</p>}
-          </div>
-        )}
+          {/* Dark BG for non-playing states */}
+          {phase !== "playing" && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "radial-gradient(ellipse at 50% 40%, #0d0525 0%, #03010f 100%)",
+              }}
+            />
+          )}
 
-        {phase === "over" && (
-          <GameOverScreen score={score} highScore={highScore} onPlayAgain={start} />
-        )}
+          {/* Overlays */}
+          {phase === "menu" && <MenuOverlay onStart={start} />}
+          {phase === "over" && (
+            <GameOverOverlay
+              score={score}
+              highScore={highScore}
+              onRestart={start}
+            />
+          )}
+        </ConsoleFrame>
       </div>
     </GameShell>
   );

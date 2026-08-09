@@ -1,53 +1,63 @@
-import { describe, expect, it } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
-  ARENA_HALF,
-  PICKUP_RADIUS,
-  clamp,
-  clampToArena,
-  collides,
-  dist2,
-  randomOrbPosition,
+  checkCollision,
+  currentSpeed,
+  currentSpawnInterval,
+  BASE_SPEED,
+  MAX_SPEED,
+  BASE_SPAWN_INTERVAL,
+  MIN_SPAWN_INTERVAL,
+  PLAYER_Z,
+  scoreFromDistance,
 } from "./logic";
 
-describe("clamp", () => {
-  it("bounds a value within the range", () => {
-    expect(clamp(5, 0, 10)).toBe(5);
-    expect(clamp(-3, 0, 10)).toBe(0);
-    expect(clamp(99, 0, 10)).toBe(10);
+describe("checkCollision", () => {
+  it("returns false when lanes differ", () => {
+    expect(checkCollision(0, 1, PLAYER_Z)).toBe(false);
+    expect(checkCollision(2, 0, PLAYER_Z)).toBe(false);
+  });
+
+  it("returns true when same lane and obstacle at player z", () => {
+    expect(checkCollision(1, 1, PLAYER_Z)).toBe(true);
+  });
+
+  it("returns false when same lane but obstacle far away", () => {
+    expect(checkCollision(0, 0, -50)).toBe(false);
+    expect(checkCollision(0, 0, 30)).toBe(false);
   });
 });
 
-describe("collides", () => {
-  it("detects a touch inside the pickup radius", () => {
-    expect(collides(0, 0, 0.5, 0.5)).toBe(true);
+describe("currentSpeed", () => {
+  it("starts at BASE_SPEED", () => {
+    expect(currentSpeed(0)).toBe(BASE_SPEED);
   });
-  it("misses when farther than the radius", () => {
-    expect(collides(0, 0, 5, 5)).toBe(false);
+
+  it("increases over time", () => {
+    expect(currentSpeed(10)).toBeGreaterThan(BASE_SPEED);
   });
-  it("is inclusive at exactly the radius edge", () => {
-    expect(collides(0, 0, PICKUP_RADIUS, 0)).toBe(true);
+
+  it("caps at MAX_SPEED", () => {
+    expect(currentSpeed(9999)).toBe(MAX_SPEED);
   });
 });
 
-describe("clampToArena", () => {
-  it("keeps out-of-bounds points inside the arena", () => {
-    expect(clampToArena(100, -100)).toEqual([ARENA_HALF, -ARENA_HALF]);
+describe("currentSpawnInterval", () => {
+  it("starts at BASE_SPAWN_INTERVAL", () => {
+    expect(currentSpawnInterval(0)).toBe(BASE_SPAWN_INTERVAL);
+  });
+
+  it("decreases over time but not below MIN", () => {
+    expect(currentSpawnInterval(9999)).toBe(MIN_SPAWN_INTERVAL);
   });
 });
 
-describe("randomOrbPosition", () => {
-  it("never spawns within minDist of the avoid point", () => {
-    // A deterministic PRNG: the first (0.5, 0.5) draw lands on the player at
-    // origin and must be rejected; the next draw is accepted.
-    const seq = [0.5, 0.5, 0.95, 0.05, 0.2, 0.8];
-    let i = 0;
-    const rand = () => seq[i++ % seq.length]!;
-    const [x, z] = randomOrbPosition(0, 0, ARENA_HALF, 4, rand);
-    expect(dist2(x, z, 0, 0)).toBeGreaterThanOrEqual(16);
+describe("scoreFromDistance", () => {
+  it("returns 0 for short distances", () => {
+    expect(scoreFromDistance(0)).toBe(0);
+    expect(scoreFromDistance(4)).toBe(0);
   });
-  it("stays within the arena bounds", () => {
-    const [x, z] = randomOrbPosition(0, 0);
-    expect(Math.abs(x)).toBeLessThanOrEqual(ARENA_HALF);
-    expect(Math.abs(z)).toBeLessThanOrEqual(ARENA_HALF);
+
+  it("increases with distance", () => {
+    expect(scoreFromDistance(50)).toBeGreaterThan(scoreFromDistance(10));
   });
 });

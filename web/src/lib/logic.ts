@@ -1,57 +1,70 @@
 /**
- * Pure game math — no React, no three.js. Keeping the rules here (instead of
- * buried in the render loop) makes them unit-testable: see logic.test.ts.
- * Replace these with your own game's rules; the pattern (pure logic + a thin
- * r3f render layer in components/Game.tsx) is what to keep.
+ * Pure game logic for Endless Highway — no React, no Three.js.
+ * Keeping rules here makes them unit-testable.
  */
 
-/** Half-width of the square arena. Player + orbs stay within ±ARENA_HALF. */
-export const ARENA_HALF = 14;
-/** Player move speed, in world units per second. */
-export const PLAYER_SPEED = 11;
-/** How close the player must get to an orb to collect it. */
-export const PICKUP_RADIUS = 1.3;
-/** Seconds on the clock per round. */
-export const ROUND_SECONDS = 30;
+/** X positions for the 3 lanes in world space */
+export const LANE_X: [number, number, number] = [-3, 0, 3];
 
-export function clamp(v: number, min: number, max: number): number {
-  return v < min ? min : v > max ? max : v;
+/** How far ahead obstacles spawn */
+export const SPAWN_Z = -60;
+
+/** Z position of the player (fixed) */
+export const PLAYER_Z = 6;
+
+/** Half-size of the player sphere for collision */
+export const PLAYER_RADIUS = 0.7;
+
+/** Half-size of an obstacle cube for collision */
+export const OBSTACLE_HALF = 0.75;
+
+/** Base game speed (world units/sec) */
+export const BASE_SPEED = 14;
+
+/** How much speed increases per second of play */
+export const SPEED_RAMP = 0.4;
+
+/** Max game speed cap */
+export const MAX_SPEED = 45;
+
+/** Score per obstacle dodged (passed) */
+export const SCORE_PER_DODGE = 10;
+
+/** Minimum gap between obstacle spawns (seconds) */
+export const MIN_SPAWN_INTERVAL = 0.35;
+
+/** Starting spawn interval (seconds) */
+export const BASE_SPAWN_INTERVAL = 1.1;
+
+/** How fast spawn interval decreases per second */
+export const SPAWN_RAMP = 0.008;
+
+export function currentSpeed(elapsed: number): number {
+  return Math.min(BASE_SPEED + elapsed * SPEED_RAMP, MAX_SPEED);
 }
 
-/** Squared 2D (x,z) distance — cheaper than a sqrt for pure comparisons. */
-export function dist2(ax: number, az: number, bx: number, bz: number): number {
-  const dx = ax - bx;
-  const dz = az - bz;
-  return dx * dx + dz * dz;
+export function currentSpawnInterval(elapsed: number): number {
+  return Math.max(BASE_SPAWN_INTERVAL - elapsed * SPAWN_RAMP, MIN_SPAWN_INTERVAL);
 }
 
-/** True when (px,pz) is within `radius` of (ox,oz). */
-export function collides(px: number, pz: number, ox: number, oz: number, radius = PICKUP_RADIUS): boolean {
-  return dist2(px, pz, ox, oz) <= radius * radius;
+/** True when the player (at playerLane) collides with an obstacle at obstacleZ in obstacleLane */
+export function checkCollision(
+  playerLane: number,
+  obstacleLane: number,
+  obstacleZ: number,
+): boolean {
+  if (playerLane !== obstacleLane) return false;
+  // Obstacle passes through z=PLAYER_Z — check overlap range
+  const dist = Math.abs(obstacleZ - PLAYER_Z);
+  return dist < PLAYER_RADIUS + OBSTACLE_HALF;
 }
 
-/** Keep a point inside the arena bounds. */
-export function clampToArena(x: number, z: number, half = ARENA_HALF): [number, number] {
-  return [clamp(x, -half, half), clamp(z, -half, half)];
+/** Returns a random lane (0, 1, or 2) */
+export function randomLane(rand: () => number = Math.random): 0 | 1 | 2 {
+  return Math.floor(rand() * 3) as 0 | 1 | 2;
 }
 
-/**
- * A random orb position at least `minDist` from (avoidX, avoidZ) so an orb
- * never spawns on top of the player. `rand` defaults to Math.random but is
- * injectable so tests stay deterministic.
- */
-export function randomOrbPosition(
-  avoidX: number,
-  avoidZ: number,
-  half = ARENA_HALF,
-  minDist = 4,
-  rand: () => number = Math.random,
-): [number, number] {
-  for (let i = 0; i < 16; i++) {
-    const x = (rand() * 2 - 1) * half;
-    const z = (rand() * 2 - 1) * half;
-    if (dist2(x, z, avoidX, avoidZ) >= minDist * minDist) return [x, z];
-  }
-  // Fallback (extremely unlikely): mirror the avoid point to the far side.
-  return clampToArena(-avoidX, -avoidZ, half);
+/** Score from distance traveled */
+export function scoreFromDistance(distance: number): number {
+  return Math.floor(distance / 5) * SCORE_PER_DODGE;
 }
