@@ -9,3 +9,13 @@ export interface Obstacle {
   lane: Lane;
   z: number;
 }
+
+/** A collectible coin */
+export interface Coin {
+  id: number;
+  lane: Lane;
+  z: number;
+  /** height above ground — coins can float at different heights */
+  y: number;
+  collected: boolean;
+}
