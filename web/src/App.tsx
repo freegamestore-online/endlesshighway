@@ -17,13 +17,12 @@ export default function App() {
   const [highScore, setHighScore] = useHighScore("endlesshighway_highscore");
 
   const scoreRef = useRef(0);
-  // Shared lane ref — App owns it, passes to both Game (3D scene) and ConsoleFrame (D-pad)
   const laneRef = useRef<Lane>(1);
 
-  const handleScore = (s: number) => {
+  const handleScore = useCallback((s: number) => {
     scoreRef.current = s;
     setScore(s);
-  };
+  }, []);
 
   const handleGameOver = useCallback(() => {
     setHighScore(scoreRef.current);
@@ -38,7 +37,6 @@ export default function App() {
     setPhase("playing");
   }, []);
 
-  // Keyboard + D-pad controls — active whenever the component is mounted
   const { moveLeft, moveRight } = useLaneControls(laneRef);
 
   return (
@@ -59,8 +57,9 @@ export default function App() {
           onRight={moveRight}
           score={score}
           highScore={highScore}
+          phase={phase}
         >
-          {/* 3D game canvas */}
+          {/* 3D canvas — only mounted while playing */}
           {phase === "playing" && (
             <Game
               key={round}
@@ -70,18 +69,19 @@ export default function App() {
             />
           )}
 
-          {/* Dark BG for non-playing states */}
+          {/* Dark background for non-playing states */}
           {phase !== "playing" && (
             <div
               style={{
                 position: "absolute",
                 inset: 0,
-                background: "radial-gradient(ellipse at 50% 40%, #0d0525 0%, #03010f 100%)",
+                background:
+                  "radial-gradient(ellipse at 50% 40%, #0d0525 0%, #03010f 100%)",
               }}
             />
           )}
 
-          {/* Overlays */}
+          {/* Screen overlays */}
           {phase === "menu" && <MenuOverlay onStart={start} />}
           {phase === "over" && (
             <GameOverOverlay

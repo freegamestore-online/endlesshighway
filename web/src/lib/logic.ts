@@ -7,37 +7,37 @@
 export const LANE_X: [number, number, number] = [-3, 0, 3];
 
 /** How far ahead obstacles spawn */
-export const SPAWN_Z = -60;
+export const SPAWN_Z = -80;
 
 /** Z position of the player (fixed) */
-export const PLAYER_Z = 6;
+export const PLAYER_Z = 4;
 
 /** Half-size of the player sphere for collision */
-export const PLAYER_RADIUS = 0.7;
+export const PLAYER_RADIUS = 0.65;
 
 /** Half-size of an obstacle cube for collision */
-export const OBSTACLE_HALF = 0.75;
+export const OBSTACLE_HALF = 0.72;
 
 /** Base game speed (world units/sec) */
-export const BASE_SPEED = 14;
+export const BASE_SPEED = 16;
 
 /** How much speed increases per second of play */
-export const SPEED_RAMP = 0.4;
+export const SPEED_RAMP = 0.35;
 
 /** Max game speed cap */
-export const MAX_SPEED = 45;
+export const MAX_SPEED = 52;
 
-/** Score per obstacle dodged (passed) */
-export const SCORE_PER_DODGE = 10;
+/** Score per 5 units of distance */
+export const SCORE_PER_UNIT = 10;
 
 /** Minimum gap between obstacle spawns (seconds) */
-export const MIN_SPAWN_INTERVAL = 0.35;
+export const MIN_SPAWN_INTERVAL = 0.3;
 
 /** Starting spawn interval (seconds) */
-export const BASE_SPAWN_INTERVAL = 1.1;
+export const BASE_SPAWN_INTERVAL = 1.2;
 
 /** How fast spawn interval decreases per second */
-export const SPAWN_RAMP = 0.008;
+export const SPAWN_RAMP = 0.007;
 
 export function currentSpeed(elapsed: number): number {
   return Math.min(BASE_SPEED + elapsed * SPEED_RAMP, MAX_SPEED);
@@ -54,7 +54,6 @@ export function checkCollision(
   obstacleZ: number,
 ): boolean {
   if (playerLane !== obstacleLane) return false;
-  // Obstacle passes through z=PLAYER_Z — check overlap range
   const dist = Math.abs(obstacleZ - PLAYER_Z);
   return dist < PLAYER_RADIUS + OBSTACLE_HALF;
 }
@@ -66,5 +65,5 @@ export function randomLane(rand: () => number = Math.random): 0 | 1 | 2 {
 
 /** Score from distance traveled */
 export function scoreFromDistance(distance: number): number {
-  return Math.floor(distance / 5) * SCORE_PER_DODGE;
+  return Math.floor(distance / 5) * SCORE_PER_UNIT;
 }

@@ -7,5 +7,5 @@ export type Lane = 0 | 1 | 2;
 export interface Obstacle {
   id: number;
   lane: Lane;
-  z: number; // world-z position (starts far, moves toward player)
+  z: number;
 }
