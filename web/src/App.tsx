@@ -11,7 +11,7 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS);
   // Bumping `round` remounts <Game> so each play starts from a clean state.
   const [round, setRound] = useState(0);
-  const [highScore, setHighScore] = useHighScore("APPNAME-highscore");
+  const [highScore, setHighScore] = useHighScore("Endless Highway-highscore");
 
   // The final score is read from a ref at game-over so it isn't stale in the
   // callback closure (score state updates asynchronously during play).
@@ -35,7 +35,7 @@ export default function App() {
     <GameShell
       topbar={
         <GameTopbar
-          title="APPNAME"
+          title="Endless Highway"
           stats={[
             { label: "Score", value: score, accent: true },
             { label: "Time", value: `${timeLeft}s` },
@@ -51,7 +51,7 @@ export default function App() {
 
         {phase === "menu" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center gap-5 px-6" style={{ background: "#0f172a" }}>
-            <h1 className="text-3xl font-bold" style={{ color: "#f8fafc" }}>APPNAME</h1>
+            <h1 className="text-3xl font-bold" style={{ color: "#f8fafc" }}>Endless Highway</h1>
             <p className="max-w-sm" style={{ color: "#94a3b8" }}>
               Move with <b>WASD / arrow keys</b> (or the on-screen pad on mobile).
               Grab as many orbs as you can before the clock runs out.
