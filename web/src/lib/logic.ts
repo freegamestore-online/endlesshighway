@@ -18,26 +18,35 @@ export const PLAYER_RADIUS = 0.65;
 /** Half-size of an obstacle cube for collision */
 export const OBSTACLE_HALF = 0.72;
 
-/** Base game speed (world units/sec) — bumped up for more excitement */
-export const BASE_SPEED = 24;
+/** Base game speed — noticeably fast from the start */
+export const BASE_SPEED = 32;
 
-/** How much speed increases per second of play */
-export const SPEED_RAMP = 0.55;
+/** Speed increase per second of play */
+export const SPEED_RAMP = 0.8;
 
-/** Max game speed cap */
-export const MAX_SPEED = 70;
+/** Hard cap on speed */
+export const MAX_SPEED = 90;
 
 /** Score per 5 units of distance */
 export const SCORE_PER_UNIT = 10;
 
-/** Minimum gap between obstacle spawns (seconds) */
-export const MIN_SPAWN_INTERVAL = 0.28;
+/** Tightest gap between spawns (seconds) */
+export const MIN_SPAWN_INTERVAL = 0.18;
 
-/** Starting spawn interval (seconds) */
-export const BASE_SPAWN_INTERVAL = 1.1;
+/** Starting spawn interval (seconds) — already aggressive */
+export const BASE_SPAWN_INTERVAL = 0.65;
 
-/** How fast spawn interval decreases per second */
-export const SPAWN_RAMP = 0.008;
+/** How fast spawn interval shrinks per second */
+export const SPAWN_RAMP = 0.012;
+
+/**
+ * After this many seconds, there's a chance a second block spawns
+ * simultaneously in a different lane.
+ */
+export const DOUBLE_SPAWN_AFTER = 8;
+
+/** Probability of a double-spawn once the threshold is passed (0–1) */
+export const DOUBLE_SPAWN_CHANCE = 0.45;
 
 export function currentSpeed(elapsed: number): number {
   return Math.min(BASE_SPEED + elapsed * SPEED_RAMP, MAX_SPEED);
@@ -45,6 +54,15 @@ export function currentSpeed(elapsed: number): number {
 
 export function currentSpawnInterval(elapsed: number): number {
   return Math.max(BASE_SPAWN_INTERVAL - elapsed * SPAWN_RAMP, MIN_SPAWN_INTERVAL);
+}
+
+/**
+ * Returns how many obstacles to spawn this tick (1 or 2).
+ * Double-spawns kick in after DOUBLE_SPAWN_AFTER seconds.
+ */
+export function spawnCount(elapsed: number, rand: () => number = Math.random): 1 | 2 {
+  if (elapsed >= DOUBLE_SPAWN_AFTER && rand() < DOUBLE_SPAWN_CHANCE) return 2;
+  return 1;
 }
 
 /** True when the player (at playerLane) collides with an obstacle at obstacleZ in obstacleLane */
@@ -61,6 +79,17 @@ export function checkCollision(
 /** Returns a random lane (0, 1, or 2) */
 export function randomLane(rand: () => number = Math.random): 0 | 1 | 2 {
   return Math.floor(rand() * 3) as 0 | 1 | 2;
+}
+
+/**
+ * Returns two DIFFERENT random lanes for double-spawns.
+ * Guarantees at least one safe lane exists.
+ */
+export function randomTwoLanes(rand: () => number = Math.random): [0 | 1 | 2, 0 | 1 | 2] {
+  const a = randomLane(rand);
+  let b: 0 | 1 | 2;
+  do { b = randomLane(rand); } while (b === a);
+  return [a, b];
 }
 
 /** Score from distance traveled */
