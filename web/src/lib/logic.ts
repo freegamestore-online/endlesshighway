@@ -18,6 +18,19 @@ export const PLAYER_RADIUS = 0.65;
 /** Half-size of an obstacle cube for collision */
 export const OBSTACLE_HALF = 0.72;
 
+/** How high the obstacle cubes sit (centre Y) */
+export const OBSTACLE_Y = 0.9;
+
+/** Jump physics */
+export const JUMP_VELOCITY = 9.5;   // initial upward velocity (units/sec)
+export const GRAVITY = 22;          // downward acceleration (units/sec²)
+
+/**
+ * Minimum jump clearance — player clears the cube when their feet are
+ * this many units above ground (cube top = OBSTACLE_Y + OBSTACLE_HALF).
+ */
+export const CUBE_TOP = OBSTACLE_Y + OBSTACLE_HALF;  // ≈ 1.62
+
 /** Base game speed — noticeably fast from the start */
 export const BASE_SPEED = 32;
 
@@ -65,15 +78,23 @@ export function spawnCount(elapsed: number, rand: () => number = Math.random): 1
   return 1;
 }
 
-/** True when the player (at playerLane) collides with an obstacle at obstacleZ in obstacleLane */
+/**
+ * Collision check that respects jumping.
+ * playerJumpY = how many units the player's feet are above ground (0 when running).
+ * The player clears the cube if their feet are above the cube top.
+ */
 export function checkCollision(
   playerLane: number,
   obstacleLane: number,
   obstacleZ: number,
+  playerJumpY: number = 0,
 ): boolean {
   if (playerLane !== obstacleLane) return false;
   const dist = Math.abs(obstacleZ - PLAYER_Z);
-  return dist < PLAYER_RADIUS + OBSTACLE_HALF;
+  if (dist >= PLAYER_RADIUS + OBSTACLE_HALF) return false;
+  // Player clears the cube if feet are above the cube top
+  if (playerJumpY > CUBE_TOP) return false;
+  return true;
 }
 
 /** Returns a random lane (0, 1, or 2) */

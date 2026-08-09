@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { GameShell, GameTopbar } from "@freegamestore/games";
 import {
   Game,
@@ -18,6 +18,8 @@ export default function App() {
 
   const scoreRef = useRef(0);
   const laneRef = useRef<Lane>(1);
+  // jumpRef holds the jump trigger function exposed by the Scene
+  const jumpRef = useRef<() => void>(() => {});
 
   const handleScore = useCallback((s: number) => {
     scoreRef.current = s;
@@ -39,6 +41,25 @@ export default function App() {
 
   const { moveLeft, moveRight } = useLaneControls(laneRef);
 
+  const handleJump = useCallback(() => {
+    jumpRef.current();
+  }, []);
+
+  // Keyboard controls
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (phase !== "playing") return;
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") moveLeft();
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") moveRight();
+      if (e.key === "ArrowUp" || e.key === "w" || e.key === "W" || e.key === " ") {
+        e.preventDefault();
+        handleJump();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase, moveLeft, moveRight, handleJump]);
+
   return (
     <GameShell
       topbar={
@@ -55,33 +76,31 @@ export default function App() {
         <ConsoleFrame
           onLeft={moveLeft}
           onRight={moveRight}
+          onJump={handleJump}
           score={score}
           highScore={highScore}
           phase={phase}
         >
-          {/* 3D canvas — only mounted while playing */}
           {phase === "playing" && (
             <Game
               key={round}
               laneRef={laneRef}
               onScore={handleScore}
               onGameOver={handleGameOver}
+              jumpRef={jumpRef}
             />
           )}
 
-          {/* Dark background for non-playing states */}
           {phase !== "playing" && (
             <div
               style={{
                 position: "absolute",
                 inset: 0,
-                background:
-                  "radial-gradient(ellipse at 50% 40%, #0d0525 0%, #03010f 100%)",
+                background: "radial-gradient(ellipse at 50% 40%, #0d0525 0%, #03010f 100%)",
               }}
             />
           )}
 
-          {/* Screen overlays */}
           {phase === "menu" && <MenuOverlay onStart={start} />}
           {phase === "over" && (
             <GameOverOverlay
