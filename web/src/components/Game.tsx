@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type JSX } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { Lane, Obstacle, Coin, Gap } from "../types";
@@ -6,7 +6,6 @@ import {
   LANE_X,
   SPAWN_Z,
   PLAYER_Z,
-  PLAYER_RADIUS,
   OBSTACLE_HALF,
   checkCollision,
   checkCoinCollect,
@@ -598,6 +597,7 @@ function Scene({ laneRef, onScore, onGameOver, onSpeed, onCoins, jumpRef }: Game
         lane: randomLane(),
         z: SPAWN_Z,
         y: randomCoinHeight(),
+        collected: false,
       });
     }
 
@@ -606,10 +606,8 @@ function Scene({ laneRef, onScore, onGameOver, onSpeed, onCoins, jumpRef }: Game
     const gapInterval = currentGapInterval(elapsed.current);
     if (elapsed.current > GAP_START_AFTER && gapSpawnTimer.current >= gapInterval) {
       gapSpawnTimer.current = 0;
-      const gapLanes = randomGapLanes();
-      for (const lane of gapLanes) {
-        gaps.current.push({ id: nextId.current++, lane, z: SPAWN_Z });
-      }
+      const gapLanes = randomGapLanes(elapsed.current);
+      gaps.current.push({ id: nextId.current++, lanes: gapLanes, z: SPAWN_Z, length: GAP_LENGTH });
     }
 
     // Move obstacles
@@ -630,11 +628,10 @@ function Scene({ laneRef, onScore, onGameOver, onSpeed, onCoins, jumpRef }: Game
     gaps.current = gaps.current.filter((g) => g.z < PLAYER_Z + GAP_LENGTH + 4);
 
     // Collision detection
-    const playerX = LANE_X[laneRef.current ?? 1]!;
     const playerY = jumpY.current;
 
     for (const obs of obstacles.current) {
-      if (checkCollision(obs, playerX, playerY)) {
+      if (checkCollision(laneRef.current ?? 1, obs.lane, obs.z, playerY)) {
         dead.current = true;
         cbs.current.onGameOver();
         return;
@@ -644,7 +641,7 @@ function Scene({ laneRef, onScore, onGameOver, onSpeed, onCoins, jumpRef }: Game
     // Coin collection
     const remaining: Coin[] = [];
     for (const c of coins.current) {
-      if (checkCoinCollect(c, playerX, playerY)) {
+      if (checkCoinCollect(laneRef.current ?? 1, c.lane, c.z, c.y, playerY)) {
         coinsCollected.current += 1;
       } else {
         remaining.push(c);
@@ -660,7 +657,7 @@ function Scene({ laneRef, onScore, onGameOver, onSpeed, onCoins, jumpRef }: Game
 
     // Gap collision
     for (const g of gaps.current) {
-      if (checkGapCollision(g, laneRef.current ?? 1, playerY, playerX)) {
+      if (checkGapCollision(laneRef.current ?? 1, g.lanes, g.z, g.length, playerY)) {
         dead.current = true;
         cbs.current.onGameOver();
         return;
